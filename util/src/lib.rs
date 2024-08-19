@@ -131,6 +131,9 @@ impl StackProfile {
 
         for (mapping, mapping_id) in self.mappings.iter().zip(1..) {
             let pathname = mapping.pathname.to_string_lossy();
+            // For windows, we should replace backslashes with forward slashes,
+            // as pprof is _pretty bad_ at handling backslashes.
+            let pathname = pathname.replace('\\', "/");
             let filename_idx = strings.insert(&pathname);
 
             let build_id_idx = match &mapping.build_id {
