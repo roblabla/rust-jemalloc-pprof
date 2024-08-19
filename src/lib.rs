@@ -24,12 +24,11 @@ use std::time::Instant;
 use libc::size_t;
 use once_cell::sync::Lazy;
 
-use mappings::MAPPINGS;
 use tempfile::NamedTempFile;
 use tikv_jemalloc_ctl::raw;
 use tokio::sync::Mutex;
 
-use util::{parse_jeheap, ProfStartTime};
+use util::{MAPPINGS, parse_jeheap, ProfStartTime};
 
 /// Activate jemalloc profiling.
 pub async fn activate_jemalloc_profiling() {
@@ -162,7 +161,7 @@ impl JemallocProfCtl {
     pub fn dump_pprof(&mut self) -> anyhow::Result<Vec<u8>> {
         let f = self.dump()?;
         let dump_reader = BufReader::new(f);
-        let profile = parse_jeheap(dump_reader, MAPPINGS.as_deref())?;
+        let profile = parse_jeheap(dump_reader, Some(&MAPPINGS))?;
         let pprof = profile.to_pprof(("inuse_space", "bytes"), ("space", "bytes"), None);
         Ok(pprof)
     }

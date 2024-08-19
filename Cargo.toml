@@ -1,5 +1,5 @@
 [workspace]
-members = ["mappings", "capi", "util"]
+members = ["capi", "util"]
 
 [package]
 name = "jemalloc_pprof"
@@ -37,11 +37,10 @@ paste = "1.0"
 num = "0.4"
 errno = "0.3"
 util = { path = "./util", version = "0.4", package = "pprof_util" }
-mappings = { path = "./mappings", version = "0.5" }
+findshlibs = "0.10.2"
 
 [dependencies]
 util.workspace = true
-mappings.workspace = true
 libc.workspace = true
 anyhow.workspace = true
 tikv-jemalloc-ctl.workspace = true

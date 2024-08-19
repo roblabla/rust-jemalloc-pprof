@@ -4,12 +4,14 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::io::BufRead;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::bail;
+use findshlibs::{Segment, SharedLibrary};
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use once_cell::sync::Lazy;
 use prost::Message;
 
 pub use cast::CastFrom;
@@ -360,3 +362,61 @@ pub fn parse_jeheap<R: BufRead>(
 
     Ok(profile)
 }
+
+pub static MAPPINGS: Lazy<Vec<Mapping>> = Lazy::new(|| {
+    let mut out = Vec::new();
+    findshlibs::TargetSharedLibrary::each(|lib| {
+        let mut path_name = PathBuf::from(lib.name());
+        if path_name == Path::new("/proc/self/exe") {
+            if let Ok(curexe) = std::env::current_exe() {
+                path_name = curexe;
+            }
+        };
+
+        if cfg!(any(windows, target_vendor = "apple")) {
+            // On windows and macOS, we should only create one mapping per
+            // "file".
+
+            let memory_start = if cfg!(windows) {
+                // On windows, there is a small bug in the findshlibs library
+                // that results in it giving the wrong value for `lib.load_addr()`
+                // (it returns the address of the first segment instead of the
+                // load address of the library).
+                //
+                // Thankfully, the bias returns the correct address (which is
+                // also buggy, as the bias should not be taking into account the
+                // ImageBase...)
+                lib.virtual_memory_bias().0
+            } else {
+                lib.actual_load_addr().0
+            };
+            let memory_end = memory_start + lib.len();
+            out.push(Mapping {
+                memory_start,
+                memory_end,
+                memory_offset: 0,
+                file_offset: 0,
+                pathname: path_name,
+                build_id: lib.debug_id().map(|v| BuildId(v.as_bytes().into())),
+            });
+        } else {
+            // On linux, we must make a mapping for each segment.
+            for seg in lib.segments() {
+                let memory_start = seg.actual_virtual_memory_address(lib).0;
+                let memory_end = memory_start + seg.len();
+                let memory_offset = seg.stated_virtual_memory_address().0.wrapping_sub(lib.stated_load_addr().0);
+                out.push(Mapping {
+                    memory_start,
+                    memory_end,
+                    memory_offset,
+                    // TODO: This needs to be set, but the library does not provide access to it.
+                    file_offset: 0,
+                    pathname: path_name.clone(),
+                    build_id: lib.debug_id().map(|v| BuildId(v.as_bytes().into())),
+                });
+            }
+        }
+    });
+    out
+});
+
